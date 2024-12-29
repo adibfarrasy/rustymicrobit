@@ -2,10 +2,10 @@
 chip = "nRF52833_xxAA"
 
 [default.rtt]
-enabled = false
-
-[default.gdb]
 enabled = true
 
+[default.gdb]
+enabled = false
+
 [default.reset]
-halt_afterwards = true
+halt_afterwards = false
