@@ -2,18 +2,7 @@ use embedded_hal::digital::InputPin;
 use fugit::ExtU64;
 use microbit::hal::gpio::{Floating, Input, Pin};
 
-use crate::{
-    channel::Sender,
-    time::{Ticker, Timer},
-};
-
-pub struct ButtonTask<'a> {
-    pin: Pin<Input<Floating>>,
-    ticker: &'a Ticker,
-    direction: ButtonDirection,
-    state: ButtonState<'a>,
-    sender: Sender<'a, ButtonDirection>,
-}
+use crate::{channel::Sender, time::Timer};
 
 #[derive(Clone, Copy)]
 pub enum ButtonDirection {
@@ -21,21 +10,26 @@ pub enum ButtonDirection {
     Right,
 }
 
-enum ButtonState<'a> {
+enum ButtonState {
     WairForPress,
-    Debounce(Timer<'a>),
+    Debounce(Timer),
+}
+
+pub struct ButtonTask<'a> {
+    pin: Pin<Input<Floating>>,
+    direction: ButtonDirection,
+    state: ButtonState,
+    sender: Sender<'a, ButtonDirection>,
 }
 
 impl<'a> ButtonTask<'a> {
     pub fn new(
         pin: Pin<Input<Floating>>,
-        ticker: &'a Ticker,
         direction: ButtonDirection,
         sender: Sender<'a, ButtonDirection>,
     ) -> Self {
         Self {
             pin,
-            ticker,
             direction,
             state: ButtonState::WairForPress,
             sender,
@@ -47,7 +41,7 @@ impl<'a> ButtonTask<'a> {
             ButtonState::WairForPress => {
                 if self.pin.is_low().unwrap() {
                     self.sender.send(self.direction);
-                    self.state = ButtonState::Debounce(Timer::new(100.millis(), &self.ticker))
+                    self.state = ButtonState::Debounce(Timer::new(100.millis()))
                 }
             }
             ButtonState::Debounce(ref timer) => {
