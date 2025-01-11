@@ -9,6 +9,7 @@ cortex-m-rt = "0.7.5"
 critical-section = "1.2.0"
 embedded-hal = "1.0.0"
 fugit = "0.3.7"
+heapless = { version = "0.8.0", features = ["portable-atomic"] }
 microbit-v2 = "0.15.1"
 panic-halt = "1.0.0"
 rtt-target = "0.6.1"

@@ -3,13 +3,19 @@
 
 mod button;
 mod channel;
+mod executor;
+mod future;
+mod gpiote;
 mod led;
 mod time;
 
-use button::{ButtonDirection, ButtonTask};
+use crate::future::OurFuture;
+use button::ButtonDirection;
+use button::ButtonTask;
 use channel::Channel;
 use embedded_hal::digital::OutputPin;
 use led::LedTask;
+use microbit::hal::gpiote::Gpiote;
 use panic_halt as _;
 
 use cortex_m_rt::entry;
@@ -22,6 +28,7 @@ fn main() -> ! {
     rtt_init_print!();
     let mut board = Board::take().unwrap();
     Ticker::init(board.RTC0, &mut board.NVIC);
+    let gpiote = Gpiote::new(board.GPIOTE);
     let (col, mut row) = board.display_pins.degrade();
     row[0].set_high().ok();
     let button_l = board.buttons.button_a.degrade();
@@ -29,12 +36,20 @@ fn main() -> ! {
 
     let channel: Channel<ButtonDirection> = Channel::new();
     let mut led_task = LedTask::new(col, channel.get_receiver());
-    let mut button_l_task = ButtonTask::new(button_l, ButtonDirection::Left, channel.get_sender());
-    let mut button_r_task = ButtonTask::new(button_r, ButtonDirection::Right, channel.get_sender());
+    let mut button_l_task = ButtonTask::new(
+        button_l,
+        ButtonDirection::Left,
+        channel.get_sender(),
+        &gpiote,
+    );
+    let mut button_r_task = ButtonTask::new(
+        button_r,
+        ButtonDirection::Right,
+        channel.get_sender(),
+        &gpiote,
+    );
 
-    loop {
-        led_task.poll();
-        button_l_task.poll();
-        button_r_task.poll();
-    }
+    let mut tasks: [&mut dyn OurFuture<Output = ()>; 3] =
+        [&mut led_task, &mut button_l_task, &mut button_r_task];
+    executor::run_tasks(&mut tasks);
 }

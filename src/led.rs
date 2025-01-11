@@ -6,7 +6,12 @@ use microbit::{
 };
 use rtt_target::rprintln;
 
-use crate::{button::ButtonDirection, channel::Receiver, time::Timer};
+use crate::{
+    button::ButtonDirection,
+    channel::Receiver,
+    future::{OurFuture, Poll},
+    time::Timer,
+};
 
 enum LedState {
     Toggle,
@@ -60,23 +65,32 @@ impl<'a> LedTask<'a> {
         }
         self.col[self.active_col].toggle().ok();
     }
+}
 
-    pub fn poll(&mut self) {
-        match self.state {
-            LedState::Toggle => {
-                self.toggle();
-                self.state = LedState::Wait(Timer::new(500.millis()));
-            }
-            LedState::Wait(ref timer) => {
-                if timer.is_ready() {
-                    self.state = LedState::Toggle;
+impl OurFuture for LedTask<'_> {
+    type Output = ();
+    fn poll(&mut self, task_id: usize) -> Poll<Self::Output> {
+        loop {
+            match self.state {
+                LedState::Toggle => {
+                    self.toggle();
+                    self.state = LedState::Wait(Timer::new(500.millis()));
                 }
+                LedState::Wait(ref mut timer) => {
+                    if let Poll::Ready(_) = timer.poll(task_id) {
+                        self.state = LedState::Toggle;
+                        continue;
+                    }
 
-                if let Some(direction) = self.receiver.receive() {
-                    self.shift(direction);
-                    self.state = LedState::Toggle;
+                    if let Poll::Ready(direction) = self.receiver.poll(task_id) {
+                        self.shift(direction);
+                        self.state = LedState::Toggle;
+                        continue;
+                    }
+                    break;
                 }
             }
         }
+        Poll::Pending
     }
 }
