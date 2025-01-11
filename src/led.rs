@@ -1,33 +1,33 @@
-use embedded_hal::digital::{OutputPin, StatefulOutputPin};
-use microbit::{
-    gpio::NUM_COLS,
-    hal::gpio::{Output, Pin, PushPull},
-};
+use embassy_nrf::gpio::Output;
 use rtt_target::rprintln;
 
 use crate::button::ButtonDirection;
 
+const NUM_COLS: usize = 5;
+
 pub struct LedRow {
-    col: [Pin<Output<PushPull>>; NUM_COLS],
+    col: [Output<'static>; NUM_COLS],
     active_col: usize,
 }
 
 impl LedRow {
-    pub fn new(col: [Pin<Output<PushPull>>; NUM_COLS]) -> Self {
+    pub fn new(col: [Output<'static>; NUM_COLS]) -> Self {
         Self { col, active_col: 0 }
     }
 
     pub fn shift(&mut self, direction: ButtonDirection) {
-        rprintln!("Button press detected...");
-        self.col[self.active_col].set_high().ok();
+        rprintln!("Button press detected..");
+        // switch off current/old LED
+        self.col[self.active_col].set_high();
         self.active_col = match direction {
             ButtonDirection::Left => match self.active_col {
-                0 => 4,
+                0 => NUM_COLS - 1,
                 _ => self.active_col - 1,
             },
             ButtonDirection::Right => (self.active_col + 1) % NUM_COLS,
         };
-        self.col[self.active_col].set_high().ok();
+        // switch off new LED: moving to Toggle will then switch it on
+        self.col[self.active_col].set_high();
     }
 
     pub fn toggle(&mut self) {
@@ -39,9 +39,9 @@ impl LedRow {
             rprintln!(
                 "Time: 0x{:x} ticks, {} ms",
                 time.ticks(),
-                time.duration_since_epoch().to_millis()
-            )
+                time.duration_since_epoch().to_millis(),
+            );
         }
-        self.col[self.active_col].toggle().ok();
+        self.col[self.active_col].toggle();
     }
 }

@@ -7,12 +7,20 @@ edition = "2021"
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.5"
 critical-section = "1.2.0"
+embassy-executor = { version = "0.6.0", features = ["arch-cortex-m", "executor-thread", "integrated-timers"] }
+embassy-nrf = { version = "0.2.0", features = [
+    "nrf52833",
+    "time-driver-rtc1",
+    "gpiote",
+] }
+embassy-sync = "0.6.0"
+embassy-time = "0.3.2"
 embedded-hal = "1.0.0"
 fugit = "0.3.7"
 futures = { version = "0.3.31", default-features = false, features = ["async-await"] }
 heapless = { version = "0.8.0", features = ["portable-atomic"] }
-microbit-v2 = "0.15.1"
 panic-halt = "1.0.0"
+panic-rtt-target = "0.2.0"
 rtt-target = "0.6.1"
 
 [features]

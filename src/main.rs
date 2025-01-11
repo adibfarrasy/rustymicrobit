@@ -2,96 +2,65 @@
 #![no_main]
 
 mod button;
-mod channel;
-mod executor;
-mod gpiote;
 mod led;
-mod time;
-
-use core::pin::pin;
 
 use button::ButtonDirection;
-use channel::Channel;
-use channel::Receiver;
-use channel::Sender;
-use embedded_hal::digital::OutputPin;
-use embedded_hal::digital::PinState;
-use fugit::ExtU64;
+use embassy_executor::Spawner;
+use embassy_nrf::gpio::{AnyPin, Input, Level, Output, OutputDrive, Pin, Pull};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::Channel};
+use embassy_time::Timer;
 use futures::{select_biased, FutureExt};
-use gpiote::InputChannel;
 use led::LedRow;
-use microbit::gpio::NUM_COLS;
-use microbit::hal::gpio::Floating;
-use microbit::hal::gpio::Input;
-use microbit::hal::gpio::Output;
-use microbit::hal::gpio::Pin;
-use microbit::hal::gpio::PushPull;
-use microbit::hal::gpiote::Gpiote;
-use panic_halt as _;
-
-use cortex_m_rt::entry;
-use microbit::board::Board;
+use panic_rtt_target as _;
 use rtt_target::rtt_init_print;
-use time::Ticker;
 
-#[entry]
-fn main() -> ! {
+static CHANNEL: Channel<ThreadModeRawMutex, ButtonDirection, 1> = Channel::new();
+
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
     rtt_init_print!();
-    let mut board = Board::take().unwrap();
-    Ticker::init(board.RTC0, &mut board.NVIC);
-    let gpiote = Gpiote::new(board.GPIOTE);
-    let (col, mut row) = board.display_pins.degrade();
-    row[0].set_high().ok();
-    let button_l = board.buttons.button_a.degrade();
-    let button_r = board.buttons.button_b.degrade();
+    let p = embassy_nrf::init(Default::default());
 
-    let channel: Channel<ButtonDirection> = Channel::new();
-    let led_task = pin!(led_task(col, channel.get_receiver()));
-    let button_l_task = pin!(button_task(
-        button_l,
-        ButtonDirection::Left,
-        channel.get_sender(),
-        &gpiote,
-    ));
-    let button_r_task = pin!(button_task(
-        button_r,
-        ButtonDirection::Right,
-        channel.get_sender(),
-        &gpiote,
-    ));
+    spawner
+        .spawn(button_task(p.P0_14.degrade(), ButtonDirection::Left))
+        .unwrap();
+    spawner
+        .spawn(button_task(p.P0_23.degrade(), ButtonDirection::Right))
+        .unwrap();
 
-    executor::run_tasks(&mut [led_task, button_l_task, button_r_task]);
-}
+    let _row1 = led_pin(p.P0_21.degrade());
+    let col = [
+        led_pin(p.P0_28.degrade()),
+        led_pin(p.P0_11.degrade()),
+        led_pin(p.P0_31.degrade()),
+        led_pin(p.P1_05.degrade()),
+        led_pin(p.P0_30.degrade()),
+    ];
 
-async fn led_task(
-    col: [Pin<Output<PushPull>>; NUM_COLS],
-    mut receiver: Receiver<'_, ButtonDirection>,
-) {
+    // LED task:
     let mut blinker = LedRow::new(col);
     loop {
         blinker.toggle();
         select_biased! {
-            direction = receiver.receive().fuse() => {
+            direction = CHANNEL.receive().fuse() => {
                 blinker.shift(direction);
             }
-            _ = time::delay(500.millis()).fuse() => {
-
-            }
+            _ = Timer::after_millis(500).fuse() => {}
         }
     }
 }
 
-async fn button_task(
-    pin: Pin<Input<Floating>>,
-    direction: ButtonDirection,
-    sender: Sender<'_, ButtonDirection>,
-    gpiote: &Gpiote,
-) {
-    let mut input = InputChannel::new(pin, gpiote);
+fn led_pin(pin: AnyPin) -> Output<'static> {
+    Output::new(pin, Level::High, OutputDrive::Standard)
+}
+
+#[embassy_executor::task(pool_size = 2)]
+async fn button_task(pin: AnyPin, direction: ButtonDirection) {
+    let mut input = Input::new(pin, Pull::None);
     loop {
-        input.wait_for(PinState::Low).await;
-        sender.send(direction);
-        time::delay(100.millis()).await;
-        input.wait_for(PinState::High).await;
+        input.wait_for_low().await;
+        CHANNEL.send(direction).await;
+        Timer::after_millis(100).await;
+        input.wait_for_high().await;
     }
 }
