@@ -1,6 +1,9 @@
 use core::{
     cell::{RefCell, RefMut},
+    future::Future,
+    pin::Pin,
     sync::atomic::{AtomicU32, Ordering},
+    task::{Context, Poll},
 };
 
 use critical_section::Mutex;
@@ -14,10 +17,7 @@ use microbit::{
     pac::{interrupt, NVIC, RTC0},
 };
 
-use crate::{
-    executor::wake_task,
-    future::{OurFuture, Poll},
-};
+use crate::executor::{wake_task, ExtWaker};
 
 type TickInstant = Instant<u64, 1, 32768>;
 type TickDuration = Duration<u64, 1, 32768>;
@@ -88,12 +88,12 @@ impl Timer {
     }
 }
 
-impl OurFuture for Timer {
+impl Future for Timer {
     type Output = ();
-    fn poll(&mut self, task_id: usize) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.state {
             TimerState::Init => {
-                self.register(task_id);
+                self.register(cx.waker().task_id());
                 self.state = TimerState::Wait;
                 Poll::Pending
             }
@@ -106,6 +106,10 @@ impl OurFuture for Timer {
             }
         }
     }
+}
+
+pub async fn delay(duration: TickDuration) {
+    Timer::new(duration).await;
 }
 
 static TICKER: Ticker = Ticker {
